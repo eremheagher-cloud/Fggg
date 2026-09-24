@@ -482,7 +482,7 @@ jobs:
           Write-Host ""
           Write-Host "Tailscale IP : $env:TAILSCALE_IP" -ForegroundColor Green
           Write-Host "Username     : rafael" -ForegroundColor Green
-          Write-Host "Password     : The password configured in the code" -ForegroundColor Green
+          Write-Host "Password     : rafael464configured in the code" -ForegroundColor Green
           Write-Host ""
           Write-Host "Use the Tailscale IP above as the RDP address."
           Write-Host ""

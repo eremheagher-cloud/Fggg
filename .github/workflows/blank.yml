@@ -1,0 +1,533 @@
+name: PC criado pelo @alves7.pcm - Windows 11 25H2
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_number:
+        description: 'Instance Number (1-10)'
+        required: true
+        default: '1'
+        type: string
+
+jobs:
+  deploy-rdp:
+    runs-on: windows-11-vs2026-arm
+    timeout-minutes: 360
+
+    steps:
+
+      # ============================================================
+      # INFORMAÇÕES DO SISTEMA
+      # ============================================================
+      - name: Show System Information
+        shell: powershell
+        run: |
+          Write-Host ""
+          Write-Host "=============================================" -ForegroundColor Cyan
+          Write-Host "       WINDOWS 11 REMOTE PC" -ForegroundColor Cyan
+          Write-Host "=============================================" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "Computer Name: $env:COMPUTERNAME"
+          Write-Host "Instance: ${{ github.event.inputs.instance_number }}"
+          Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
+          Write-Host ""
+
+      # ============================================================
+      # OTIMIZAÇÃO DO WINDOWS
+      # ============================================================
+      - name: Optimize Windows Performance
+        shell: powershell
+        run: |
+          Write-Host "Optimizing Windows performance..." -ForegroundColor Green
+
+          try {
+              $visualPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+
+              if (-not (Test-Path $visualPath)) {
+                  New-Item -Path $visualPath -Force | Out-Null
+              }
+
+              Set-ItemProperty `
+                -Path $visualPath `
+                -Name "VisualFXSetting" `
+                -Value 2 `
+                -Force
+          }
+          catch {
+              Write-Host "Visual effects optimization skipped."
+          }
+
+          try {
+              $personalizePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+
+              if (-not (Test-Path $personalizePath)) {
+                  New-Item -Path $personalizePath -Force | Out-Null
+              }
+
+              Set-ItemProperty `
+                -Path $personalizePath `
+                -Name "EnableTransparency" `
+                -Value 0 `
+                -Force
+          }
+          catch {
+              Write-Host "Transparency optimization skipped."
+          }
+
+          try {
+              $desktopPath = "HKCU:\Control Panel\Desktop"
+
+              Set-ItemProperty `
+                -Path $desktopPath `
+                -Name "MenuShowDelay" `
+                -Value "0" `
+                -Force
+          }
+          catch {
+              Write-Host "Menu delay optimization skipped."
+          }
+
+          try {
+              powercfg -setactive SCHEME_MIN
+          }
+          catch {
+              Write-Host "Power plan optimization skipped."
+          }
+
+          Write-Host "Performance optimization completed." -ForegroundColor Green
+
+      # ============================================================
+      # ATIVAR RDP
+      # ============================================================
+      - name: Enable Remote Desktop
+        shell: powershell
+        run: |
+          Write-Host "Enabling Remote Desktop..." -ForegroundColor Green
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" `
+            -Value 0 `
+            -Force
+
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
+            -Name "UserAuthentication" `
+            -Value 1 `
+            -Force
+
+          Enable-NetFirewallRule `
+            -DisplayGroup "Remote Desktop" `
+            -ErrorAction SilentlyContinue
+
+          Write-Host "Remote Desktop enabled." -ForegroundColor Green
+
+      # ============================================================
+      # CRIAR CONTA RAFAEL
+      #
+      # COLOQUE A SUA SENHA EM:
+      # $RafaelPasswordText = "SUA_SENHA_AQUI"
+      #
+      # NÃO É NECESSÁRIO O SECRET RAFAEL_PASSWORD
+      # ============================================================
+      - name: Create Rafael Account
+        shell: powershell
+        run: |
+          Write-Host "Setting up Rafael account..." -ForegroundColor Green
+
+          # ========================================================
+          # SUA SENHA DO RAFAEL
+          # ========================================================
+          $RafaelPasswordText = "SUA_SENHA_AQUI"
+
+          if ([string]::IsNullOrWhiteSpace($RafaelPasswordText)) {
+              Write-Host "Rafael password cannot be empty." -ForegroundColor Red
+              exit 1
+          }
+
+          $Password = ConvertTo-SecureString `
+            $RafaelPasswordText `
+            -AsPlainText `
+            -Force
+
+          $existingUser = Get-LocalUser `
+            -Name "rafael" `
+            -ErrorAction SilentlyContinue
+
+          if ($null -eq $existingUser) {
+
+              Write-Host "Creating user rafael..."
+
+              New-LocalUser `
+                -Name "rafael" `
+                -Password $Password `
+                -FullName "Rafael" `
+                -Description "Rafael RDP account" `
+                -PasswordNeverExpires:$true
+
+              Write-Host "User rafael created." -ForegroundColor Green
+          }
+          else {
+
+              Write-Host "User rafael already exists."
+              Write-Host "Updating Rafael password..."
+
+              Set-LocalUser `
+                -Name "rafael" `
+                -Password $Password
+
+              Write-Host "Rafael password updated." -ForegroundColor Green
+          }
+
+          Add-LocalGroupMember `
+            -Group "Remote Desktop Users" `
+            -Member "rafael" `
+            -ErrorAction SilentlyContinue
+
+          Write-Host "Rafael added to Remote Desktop Users." -ForegroundColor Green
+
+      # ============================================================
+      # CONFIGURAR RUNNERADMIN
+      # ============================================================
+      - name: Configure RunnerAdmin
+        shell: powershell
+        run: |
+          Write-Host "Configuring runneradmin..." -ForegroundColor Green
+
+          $existingUser = Get-LocalUser `
+            -Name "runneradmin" `
+            -ErrorAction SilentlyContinue
+
+          if ($null -eq $existingUser) {
+
+              $RunnerPassword = ConvertTo-SecureString `
+                "P@ssw0rd!" `
+                -AsPlainText `
+                -Force
+
+              New-LocalUser `
+                -Name "runneradmin" `
+                -Password $RunnerPassword `
+                -FullName "Runner Administrator" `
+                -Description "GitHub Actions administrator account" `
+                -PasswordNeverExpires:$true
+
+              Write-Host "runneradmin created."
+          }
+          else {
+              Write-Host "runneradmin already exists."
+          }
+
+          Add-LocalGroupMember `
+            -Group "Administrators" `
+            -Member "runneradmin" `
+            -ErrorAction SilentlyContinue
+
+          Add-LocalGroupMember `
+            -Group "Remote Desktop Users" `
+            -Member "runneradmin" `
+            -ErrorAction SilentlyContinue
+
+          Write-Host "runneradmin configured." -ForegroundColor Green
+
+      # ============================================================
+      # INSTALAR TAILSCALE
+      # ============================================================
+      - name: Install Tailscale
+        shell: powershell
+        run: |
+          Write-Host "Installing Tailscale..." -ForegroundColor Green
+
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.102.4.exe"
+          $installerPath = "$env:TEMP\tailscale-setup.exe"
+
+          Invoke-WebRequest `
+            -Uri $tsUrl `
+            -OutFile $installerPath `
+            -UseBasicParsing
+
+          if (-not (Test-Path $installerPath)) {
+              Write-Host "Tailscale installer was not downloaded." -ForegroundColor Red
+              exit 1
+          }
+
+          $process = Start-Process `
+            -FilePath $installerPath `
+            -ArgumentList "/quiet" `
+            -Wait `
+            -PassThru
+
+          Write-Host "Tailscale installer exit code: $($process.ExitCode)"
+
+          if ($process.ExitCode -ne 0) {
+              Write-Host "Tailscale installation failed." -ForegroundColor Red
+              exit 1
+          }
+
+          Write-Host "Tailscale installed." -ForegroundColor Green
+
+      # ============================================================
+      # INICIAR SERVIÇO TAILSCALE
+      # ============================================================
+      - name: Start Tailscale Service
+        shell: powershell
+        run: |
+          Write-Host "Starting Tailscale service..." -ForegroundColor Green
+
+          $service = Get-Service `
+            -Name "Tailscale" `
+            -ErrorAction SilentlyContinue
+
+          if ($null -eq $service) {
+              Write-Host "Tailscale service was not found." -ForegroundColor Red
+              exit 1
+          }
+
+          if ($service.Status -ne "Running") {
+              Start-Service -Name "Tailscale"
+          }
+
+          $running = $false
+
+          for ($i = 1; $i -le 12; $i++) {
+
+              $service = Get-Service `
+                -Name "Tailscale" `
+                -ErrorAction SilentlyContinue
+
+              if ($service.Status -eq "Running") {
+                  $running = $true
+                  break
+              }
+
+              Write-Host "Waiting for Tailscale service... ($i/12)"
+              Start-Sleep -Seconds 5
+          }
+
+          if (-not $running) {
+              Write-Host "Tailscale service did not start." -ForegroundColor Red
+              exit 1
+          }
+
+          Write-Host "Tailscale service is running." -ForegroundColor Green
+
+      # ============================================================
+      # CONECTAR TAILSCALE
+      #
+      # USA O GITHUB SECRET:
+      # TAILSCALE_AUTH_KEY
+      # ============================================================
+      - name: Connect Tailscale
+        shell: powershell
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          Write-Host "Connecting to Tailscale..." -ForegroundColor Green
+
+          $tailscalePath = "C:\Program Files\Tailscale\tailscale.exe"
+
+          if (-not (Test-Path $tailscalePath)) {
+              Write-Host "Tailscale executable not found." -ForegroundColor Red
+              exit 1
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTH_KEY)) {
+              Write-Host "TAILSCALE_AUTH_KEY secret is missing." -ForegroundColor Red
+              Write-Host "Create a GitHub Actions secret named TAILSCALE_AUTH_KEY." -ForegroundColor Yellow
+              exit 1
+          }
+
+          & $tailscalePath up `
+            --auth-key="$env:TAILSCALE_AUTH_KEY" `
+            --hostname="enigmano-${{ github.run_id }}" `
+            --unattended=true `
+            --timeout=60s
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host "Tailscale connection failed." -ForegroundColor Red
+              & $tailscalePath status
+              exit 1
+          }
+
+          Write-Host "Tailscale connection completed." -ForegroundColor Green
+
+      # ============================================================
+      # VERIFICAR IP TAILSCALE
+      # ============================================================
+      - name: Verify Tailscale Connection
+        shell: powershell
+        run: |
+          Write-Host "Waiting for Tailscale IP..." -ForegroundColor Yellow
+
+          $tailscalePath = "C:\Program Files\Tailscale\tailscale.exe"
+          $connected = $false
+
+          for ($i = 1; $i -le 12; $i++) {
+
+              Write-Host "Checking Tailscale connection... ($i/12)"
+
+              $status = & $tailscalePath status 2>&1
+              $ip = & $tailscalePath ip -4 2>&1
+
+              Write-Host "Tailscale status:"
+              Write-Host $status
+
+              Write-Host "Tailscale IPv4:"
+              Write-Host $ip
+
+              if (
+                  $LASTEXITCODE -eq 0 -and
+                  $ip -match '^\d{1,3}(\.\d{1,3}){3}$'
+              ) {
+
+                  $ip = $ip.Trim()
+
+                  "TAILSCALE_IP=$ip" |
+                    Out-File `
+                      -FilePath $env:GITHUB_ENV `
+                      -Append `
+                      -Encoding utf8
+
+                  $connected = $true
+                  break
+              }
+
+              Start-Sleep -Seconds 5
+          }
+
+          if (-not $connected) {
+              Write-Host ""
+              Write-Host "=============================================" -ForegroundColor Red
+              Write-Host "Unable to obtain Tailscale IP." -ForegroundColor Red
+              Write-Host "=============================================" -ForegroundColor Red
+              Write-Host ""
+
+              & $tailscalePath status
+
+              exit 1
+          }
+
+          Write-Host ""
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP" -ForegroundColor Green
+          Write-Host "Tailscale is connected." -ForegroundColor Green
+
+      # ============================================================
+      # INSTALAR GOOGLE CHROME
+      # ============================================================
+      - name: Install Google Chrome
+        shell: powershell
+        run: |
+          Write-Host "Installing Google Chrome..." -ForegroundColor Green
+
+          $chromeUrl = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
+          $chromeInstaller = "$env:TEMP\chrome_installer.exe"
+
+          Invoke-WebRequest `
+            -Uri $chromeUrl `
+            -OutFile $chromeInstaller `
+            -UseBasicParsing
+
+          if (Test-Path $chromeInstaller) {
+
+              $process = Start-Process `
+                -FilePath $chromeInstaller `
+                -ArgumentList "/silent", "/install" `
+                -Wait `
+                -PassThru
+
+              Write-Host "Chrome installer exit code: $($process.ExitCode)"
+          }
+
+          Write-Host "Chrome installation completed." -ForegroundColor Green
+
+      # ============================================================
+      # INSTALAR 7-ZIP
+      # ============================================================
+      - name: Install 7-Zip
+        shell: powershell
+        run: |
+          Write-Host "Installing 7-Zip..." -ForegroundColor Green
+
+          $zipUrl = "https://www.7-zip.org/a/7z2409-x64.exe"
+          $zipInstaller = "$env:TEMP\7zip.exe"
+
+          Invoke-WebRequest `
+            -Uri $zipUrl `
+            -OutFile $zipInstaller `
+            -UseBasicParsing
+
+          if (Test-Path $zipInstaller) {
+
+              $process = Start-Process `
+                -FilePath $zipInstaller `
+                -ArgumentList "/S" `
+                -Wait `
+                -PassThru
+
+              Write-Host "7-Zip installer exit code: $($process.ExitCode)"
+          }
+
+          Write-Host "7-Zip installation completed." -ForegroundColor Green
+
+      # ============================================================
+      # MOSTRAR DADOS DE CONEXÃO
+      # ============================================================
+      - name: Show Connection Information
+        shell: powershell
+        run: |
+          Write-Host ""
+          Write-Host "====================================================" -ForegroundColor Cyan
+          Write-Host "             REMOTE DESKTOP READY" -ForegroundColor Cyan
+          Write-Host "====================================================" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "Tailscale IP : $env:TAILSCALE_IP" -ForegroundColor Green
+          Write-Host "Username     : rafael" -ForegroundColor Green
+          Write-Host "Password     : The password configured in the code" -ForegroundColor Green
+          Write-Host ""
+          Write-Host "Use the Tailscale IP above as the RDP address."
+          Write-Host ""
+          Write-Host "====================================================" -ForegroundColor Cyan
+
+      # ============================================================
+      # MANTER RUNNER ATIVO
+      # ============================================================
+      - name: Keep Runner Alive
+        shell: powershell
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          Write-Host "Keeping runner alive..." -ForegroundColor Green
+
+          $tailscalePath = "C:\Program Files\Tailscale\tailscale.exe"
+
+          while ($true) {
+
+              try {
+
+                  $status = & $tailscalePath status 2>&1
+
+                  if ($LASTEXITCODE -ne 0) {
+
+                      Write-Host "Tailscale appears disconnected." -ForegroundColor Yellow
+                      Write-Host "Attempting reconnection..." -ForegroundColor Yellow
+
+                      if (-not [string]::IsNullOrWhiteSpace($env:TAILSCALE_AUTH_KEY)) {
+
+                          & $tailscalePath up `
+                            --auth-key="$env:TAILSCALE_AUTH_KEY" `
+                            --hostname="enigmano-${{ github.run_id }}" `
+                            --unattended=true `
+                            --timeout=60s
+                      }
+                  }
+                  else {
+                      Write-Host "Tailscale is active."
+                  }
+
+              }
+              catch {
+                  Write-Host "Tailscale check failed."
+              }
+
+              Start-Sleep -Seconds 30
+          }
